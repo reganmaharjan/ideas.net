@@ -1,0 +1,259 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  BUILDER
+  INVESTOR
+  MENTOR
+  ENTHUSIAST
+  ADMIN
+}
+
+enum IdeaStatus {
+  DRAFT
+  PUBLISHED
+  PRIVATE
+  ARCHIVED
+}
+
+enum VoteType {
+  UPVOTE
+  DOWNVOTE
+  INVEST_INTEREST
+  WOULD_USE
+  WOULD_PAY
+}
+
+enum CommentType {
+  FEEDBACK
+  QUESTION
+  SUGGESTION
+  CRITIQUE
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  username      String   @unique
+  firstName     String
+  lastName      String
+  password      String   // Hashed password
+  bio           String?
+  avatar        String?
+  role          UserRole @default(ENTHUSIAST)
+  skills        String[] // Array of skills
+  interests     String[] // Array of interests
+  location      String?
+  website       String?
+  linkedin      String?
+  twitter       String?
+  github        String?
+  isVerified    Boolean  @default(false)
+  isPremium     Boolean  @default(false)
+  emailVerified Boolean  @default(false)
+  lastActive    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  ideas         Idea[]
+  comments      Comment[]
+  votes         Vote[]
+  followers     Follow[] @relation("UserFollowers")
+  following     Follow[] @relation("UserFollowing")
+  notifications Notification[]
+  messages      Message[] @relation("MessageSender")
+  receivedMessages Message[] @relation("MessageReceiver")
+  ideaMembers   IdeaMember[]
+  ideaInvites   IdeaInvite[] @relation("InviteSender")
+  receivedInvites IdeaInvite[] @relation("InviteReceiver")
+
+  @@map("users")
+}
+
+model Idea {
+  id          String     @id @default(cuid())
+  title       String
+  slug        String     @unique
+  description String
+  problem     String
+  solution    String
+  targetMarket String?
+  businessModel String?
+  tags        String[]   // Array of tags
+  industry    String?
+  technology  String?
+  status      IdeaStatus @default(DRAFT)
+  isPublic    Boolean    @default(true)
+  isFeatured  Boolean    @default(false)
+  viewCount   Int        @default(0)
+  upvoteCount Int        @default(0)
+  downvoteCount Int      @default(0)
+  investInterestCount Int @default(0)
+  wouldUseCount Int      @default(0)
+  wouldPayCount Int      @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  // Relations
+  authorId    String
+  author      User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments    Comment[]
+  votes       Vote[]
+  members     IdeaMember[]
+  invites     IdeaInvite[]
+  aiSummaries AISummary[]
+
+  @@map("ideas")
+}
+
+model Comment {
+  id        String      @id @default(cuid())
+  content   String
+  type      CommentType @default(FEEDBACK)
+  isEdited  Boolean     @default(false)
+  isDeleted Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  // Relations
+  authorId  String
+  author    User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  ideaId    String
+  idea      Idea        @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  parentId  String?     // For nested comments
+  parent    Comment?    @relation("CommentReplies", fields: [parentId], references: [id])
+  replies   Comment[]   @relation("CommentReplies")
+  votes     Vote[]
+
+  @@map("comments")
+}
+
+model Vote {
+  id        String   @id @default(cuid())
+  type      VoteType
+  createdAt DateTime @default(now())
+
+  // Relations
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ideaId    String?
+  idea      Idea?    @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  commentId String?
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, ideaId, type])
+  @@unique([userId, commentId, type])
+  @@map("votes")
+}
+
+model Follow {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  // Relations
+  followerId String
+  follower   User     @relation("UserFollowers", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User     @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@map("follows")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  type      String   // e.g., "comment", "vote", "follow", "mention"
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  data      Json?    // Additional data for the notification
+  createdAt DateTime @default(now())
+
+  // Relations
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  content   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // Relations
+  senderId  String
+  sender    User     @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId String
+  receiver  User     @relation("MessageReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model IdeaMember {
+  id        String   @id @default(cuid())
+  role      String   // e.g., "co-founder", "advisor", "developer"
+  joinedAt  DateTime @default(now())
+
+  // Relations
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ideaId    String
+  idea      Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, ideaId])
+  @@map("idea_members")
+}
+
+model IdeaInvite {
+  id        String   @id @default(cuid())
+  role      String
+  message   String?
+  status    String   @default("PENDING") // PENDING, ACCEPTED, DECLINED
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  // Relations
+  senderId  String
+  sender    User     @relation("InviteSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId String
+  receiver  User     @relation("InviteReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  ideaId    String
+  idea      Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  @@map("idea_invites")
+}
+
+model AISummary {
+  id        String   @id @default(cuid())
+  summary   String
+  insights  Json     // Structured insights from AI
+  createdAt DateTime @default(now())
+
+  // Relations
+  ideaId    String
+  idea      Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  @@map("ai_summaries")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("sessions")
+} 
